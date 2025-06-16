@@ -1,0 +1,36 @@
+# Rust build artifacts
+/target
+**/target/
+
+# Cargo lock file for libraries
+Cargo.lock
+
+# IDE/editor settings
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Logs & dumps
+*.log
+*.tmp
+
+# Coverage & testing tools
+/coverage/
+*.profraw
+
+# Git-specific
+.git/
+*.orig
+
+# Node.js frontend (if you add devtools later)
+node_modules/
+dist/
+
+# Tauri build artifacts (future)
+src-tauri/target/
+src-tauri/Cargo.lock
