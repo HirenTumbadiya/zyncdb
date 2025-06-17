@@ -8,3 +8,4 @@ name = "zyncdb"
 path = "src/main.rs"
 
 [dependencies]
+zyncdb-core = { path = "../core" }
