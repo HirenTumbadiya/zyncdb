@@ -1,2 +1,12 @@
 PUT|city|Tokyo
 DELETE|city
+PUT|hiren|hiren
+DELETE|hiren
+PUT|hiren|hiren
+PUT|hiren|hiren
+DELETE|hiren
+PUT|hiren|hiren
+PUT|hiren|hiren
+DELETE|hiren
+PUT|hiren|hiren
+DELETE|hiren

@@ -38,21 +38,36 @@ impl Wal {
 
         for line in reader.lines() {
             let line = line?;
-            let parts: Vec<&str> = line.trim().split('|').collect();
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let parts: Vec<&str> = line.split('|').collect();
 
-            match parts.as_slice() {
-                ["PUT", key, value] => {
-                    store.insert(key.to_string(), value.to_string());
-                }
-                ["DELETE", key] => {
-                    store.remove(*key);
-                }
-                _ => {
-                    eprintln!("WAL: Unrecognized line format: {}", line);
-                }
+            if parts.len() == 3 && parts[0] == "PUT" {
+                store.insert(parts[1].to_string(), parts[2].to_string());
+            } else if parts.len() == 2 && parts[0] == "DELETE" {
+                store.remove(parts[1]);
+            } else {
+                eprintln!("WAL: Unrecognized line format: {}", line);
+                // Do not touch the map
             }
         }
 
         Ok(store)
     }
+
+    /// Truncate the WAL file (clear all contents).
+    pub fn truncate(&mut self, path: &Path) -> io::Result<()> {
+        // Re-open in write mode to truncate
+        self.log_file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(path)?;
+        Ok(())
+    }
 }
+
+// Example usage in your codebase
+pub const WAL_PATH: &str = ".zyncdb.wal";
+pub const SNAPSHOT_PATH: &str = ".zyncdb.snapshot";

@@ -2,6 +2,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 
 use zyncdb_core::KvStore;
+use parser::{SimpleParser, Parser, Command}; // <-- Add parser import
 
 fn main() -> io::Result<()> {
     println!("Welcome to zyncdb 🦀");
@@ -12,6 +13,7 @@ fn main() -> io::Result<()> {
 
     let stdin = io::stdin();
     let mut stdout = io::stdout();
+    let parser = SimpleParser; // <-- Create parser
 
     loop {
         print!("> ");
@@ -20,36 +22,26 @@ fn main() -> io::Result<()> {
         let mut input = String::new();
         stdin.read_line(&mut input)?;
 
-        let input = input.trim();
-        if input.is_empty() {
-            continue;
-        }
+        let command = parser.parse(&input); // <-- Use parser
 
-        let parts: Vec<&str> = input.splitn(3, ' ').collect();
-        match parts.as_slice() {
-            ["exit"] | ["quit"] => break,
-
-            ["put", key, value] => {
-                store.insert(key.to_string(), value.to_string());
+        match command {
+            Command::Put { key, value } => {
+                store.insert(key, value);
                 println!("ok");
             }
-
-            ["get", key] => match store.get(key) {
+            Command::Get { key } => match store.get(&key) {
                 Some(value) => println!("{}", value),
                 None => println!("(key not found)"),
             },
-
-            ["delete", key] => {
-                if store.delete(key) {
+            Command::Delete { key } => {
+                if store.delete(&key) {
                     println!("deleted");
                 } else {
                     println!("(key not found)");
                 }
             }
-
-            _ => {
-                println!("Unknown command. Try: put/get/delete/exit");
-            }
+            Command::Exit => break,
+            Command::Unknown => println!("Unknown command. Try: put/get/delete/exit"),
         }
     }
 
