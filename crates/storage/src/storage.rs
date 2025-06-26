@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-pub trait Storage {
+pub trait Storage: Send + Sync {
     fn get(&self, key: &str) -> Option<String>;
     fn insert(&mut self, key: String, value: String) -> Option<String>;
     fn delete(&mut self, key: &str) -> bool;

@@ -1,14 +1,23 @@
 use crate::wal::Wal;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-use storage::{MemStorage, Storage};
+use storage::{FileStorage, MemStorage, Storage};
 
 pub struct KvStore {
     storage: Box<dyn Storage>,
     wal: Option<Arc<Mutex<Wal>>>,
+    expirations: HashMap<String, Instant>,
+    tx_buffer: Option<HashMap<String, String>>,
+}
+
+pub enum Backend {
+    Memory,
+    File(String),
 }
 
 impl KvStore {
@@ -25,52 +34,42 @@ impl KvStore {
         Ok(KvStore {
             storage: Box::new(mem),
             wal: Some(Arc::new(Mutex::new(wal))),
+            expirations: HashMap::new(),
+            tx_buffer: None,
         })
     }
 
-    pub fn get(&self, key: &str) -> Option<String> {
-        self.storage.get(key)
-    }
+    pub fn open_with_backend(path: &Path, backend: Backend) -> std::io::Result<Self> {
+        let mut wal = Wal::open(path)?;
+        let map = wal.load_into()?;
 
-    pub fn len(&self) -> usize {
-        self.storage.len()
-    }
-
-    pub fn clear(&mut self) {
-        self.storage.clear();
-    }
-
-    pub fn insert(&mut self, key: String, value: String) -> Option<String> {
-        if let Some(wal) = &self.wal {
-            if let Ok(mut wal) = wal.lock() {
-                if let Err(e) = wal.append_put(&key, &value) {
-                    eprintln!("WAL append_put error: {}", e);
+        let storage: Box<dyn Storage> = match backend {
+            Backend::Memory => {
+                let mut mem = MemStorage::new();
+                for (k, v) in map {
+                    mem.insert(k, v);
                 }
+                Box::new(mem)
             }
-        }
-        self.storage.insert(key, value)
-    }
-
-    pub fn delete(&mut self, key: &str) -> bool {
-        if self.storage.get(key).is_some() {
-            if let Some(wal) = &self.wal {
-                if let Ok(mut wal) = wal.lock() {
-                    if let Err(e) = wal.append_delete(key) {
-                        eprintln!("WAL append_delete error: {}", e);
-                    }
+            Backend::File(file_path) => {
+                let mut file_storage = FileStorage::new(file_path)?;
+                for (k, v) in map {
+                    file_storage.insert(k, v);
                 }
+                Box::new(file_storage)
             }
-            self.storage.delete(key)
-        } else {
-            false
-        }
+        };
+
+        Ok(KvStore {
+            storage,
+            wal: Some(Arc::new(Mutex::new(wal))),
+            expirations: HashMap::new(),
+            tx_buffer: None,
+        })
     }
 
-    pub fn contains_key(&self, key: &str) -> bool {
-        self.storage.get(key).is_some()
-    }
-
-    /// Write the current state to a snapshot file and truncate the WAL.
+    /// Create a snapshot of the current state and truncate the WAL.
+    /// This will write the current key-value pairs to a snapshot file and clear the WAL.
     pub fn snapshot_and_compact(
         &mut self,
         snapshot_path: &Path,
@@ -119,6 +118,90 @@ impl KvStore {
         Ok(KvStore {
             storage: Box::new(mem),
             wal: Some(Arc::new(Mutex::new(wal))),
+            expirations: HashMap::new(),
+            tx_buffer: None,
         })
+    }
+
+    pub fn set_ttl(&mut self, key: &str, ttl_secs: u64) {
+        self.expirations
+            .insert(key.to_string(), Instant::now() + Duration::from_secs(ttl_secs));
+    }
+
+    pub fn get(&mut self, key: &str) -> Option<String> {
+        // Check expiration
+        if let Some(expiry) = self.expirations.get(key) {
+            if Instant::now() > *expiry {
+                self.storage.delete(key);
+                self.expirations.remove(key);
+                return None;
+            }
+        }
+        self.storage.get(key)
+    }
+
+    pub fn len(&self) -> usize {
+        self.storage.len()
+    }
+
+    pub fn clear(&mut self) {
+        self.storage.clear();
+    }
+
+    pub fn insert(&mut self, key: String, value: String) -> Option<String> {
+        if let Some(buf) = &mut self.tx_buffer {
+            buf.insert(key, value)
+        } else {
+            if let Some(wal) = &self.wal {
+                if let Ok(mut wal) = wal.lock() {
+                    if let Err(e) = wal.append_put(&key, &value) {
+                        eprintln!("WAL append_put error: {}", e);
+                    }
+                }
+            }
+            self.storage.insert(key, value)
+        }
+    }
+
+    pub fn delete(&mut self, key: &str) -> bool {
+        if self.storage.get(key).is_some() {
+            if let Some(buf) = &mut self.tx_buffer {
+                buf.remove(key);
+                true
+            } else {
+                if let Some(wal) = &self.wal {
+                    if let Ok(mut wal) = wal.lock() {
+                        if let Err(e) = wal.append_delete(key) {
+                            eprintln!("WAL append_delete error: {}", e);
+                        }
+                    }
+                }
+                self.storage.delete(key)
+            }
+        } else {
+            false
+        }
+    }
+
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.storage.get(key).is_some()
+    }
+
+    pub fn iter(&self) -> Box<dyn Iterator<Item = (String, String)> + '_> {
+        self.storage.iter()
+    }
+
+    pub fn begin_tx(&mut self) {
+        self.tx_buffer = Some(HashMap::new());
+    }
+    pub fn commit_tx(&mut self) {
+        if let Some(buf) = self.tx_buffer.take() {
+            for (k, v) in buf {
+                self.storage.insert(k, v);
+            }
+        }
+    }
+    pub fn rollback_tx(&mut self) {
+        self.tx_buffer = None;
     }
 }
