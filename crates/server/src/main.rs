@@ -11,7 +11,12 @@ fn handle_client(stream: TcpStream, store: Arc<Mutex<KvStore>>) {
     let mut writer = stream;
     let parser = SimpleParser;
 
+    let _ = writer.write_all("Welcome to zyncdb 🦀\nType 'help' for commands.\n".as_bytes());
+    let _ = writer.flush();
+    println!("Client connected success");
+
     loop {
+        println!("Client connected");
         let mut input = String::new();
         if reader.read_line(&mut input).is_err() {
             break;
@@ -34,6 +39,21 @@ fn handle_client(stream: TcpStream, store: Arc<Mutex<KvStore>>) {
                     "(key not found)\n".to_string()
                 }
             }
+            Command::Help => {
+                "Available commands:\n\
+                put <key> <value>\n\
+                get <key>\n\
+                delete <key>\n\
+                insert <key> <value>\n\
+                select <key>\n\
+                remove <key>\n\
+                ttl <key> <seconds>\n\
+                batch ...\n\
+                snapshot\n\
+                list\n\
+                help\n\
+                exit\n".to_string()
+            }
             Command::Exit => break,
             _ => "Unknown command\n".to_string(),
         };
@@ -42,21 +62,23 @@ fn handle_client(stream: TcpStream, store: Arc<Mutex<KvStore>>) {
 }
 
 fn main() -> std::io::Result<()> {
+    env_logger::init();
     let wal_path = PathBuf::from(".zyncdb.wal");
     let store = Arc::new(Mutex::new(KvStore::open(&wal_path)?));
     let listener = TcpListener::bind("127.0.0.1:6379")?;
-    println!("Server listening on 127.0.0.1:6379");
+    log::info!("Server listening on 127.0.0.1:6379");
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 let store = Arc::clone(&store);
                 thread::spawn(move || {
+                    log::debug!("Client connected: {:?}", stream.peer_addr());
                     handle_client(stream, store);
                 });
             }
             Err(e) => {
-                eprintln!("Connection failed: {}", e);
+                log::error!("Connection failed: {}", e);
             }
         }
     }

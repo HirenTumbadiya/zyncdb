@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub enum Command {
     Put { key: String, value: String },
     Get { key: String },
@@ -11,6 +12,7 @@ pub enum Command {
     Unknown,
     Ttl { key: String, seconds: u64 },
     Batch(Vec<Command>),
+    Help,
 }
 
 
@@ -54,8 +56,8 @@ impl Parser for SimpleParser {
                 seconds: secs.parse().unwrap(),
             },
             ["BATCH", rest @ ..] => {
-                // Parse rest as multiple put/delete commands
-                // For simplicity, only support "put key value" for now
+                // Parse a batch of commands
+                // Assuming the format is "BATCH put key1 value1 put key2 value2 ..."
                 let mut cmds = Vec::new();
                 let mut i = 0;
                 while i < rest.len() {
@@ -72,6 +74,7 @@ impl Parser for SimpleParser {
                 }
                 Command::Batch(cmds)
             }
+            ["HELP"] | ["help"] => Command::Help,
             _ => Command::Unknown,
         }
     }

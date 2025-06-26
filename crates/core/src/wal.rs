@@ -4,8 +4,8 @@ use std::path::Path;
 use std::collections::HashMap;
 use std::io;
 
-// #[cfg(unix)]
-// use std::os::unix::fs::OpenOptionsExt;
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 
 pub struct Wal {
     log_file: File,
@@ -16,7 +16,7 @@ impl Wal {
         let mut opts = OpenOptions::new();
         opts.create(true).append(true).read(true);
         #[cfg(unix)]
-        opts.mode(0o600); // Owner read/write only
+        opts.mode(0o600);
         let log_file = opts.open(path)?;
         Ok(Wal { log_file })
     }

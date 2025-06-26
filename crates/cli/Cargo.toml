@@ -10,3 +10,9 @@ path = "src/main.rs"
 [dependencies]
 zyncdb-core = { path = "../core" }
 parser = { path = "../parser" }
+log = "0.4"
+env_logger = "0.10"
+
+[[bin]]
+name = "console"
+path = "src/bin/console.rs"
